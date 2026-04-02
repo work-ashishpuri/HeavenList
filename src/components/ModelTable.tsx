@@ -13,7 +13,6 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import {
   fetchModelCard,
-  fetchSpacesCount,
   getLicense,
   getModelSize,
   type HFModel,
@@ -84,17 +83,6 @@ function ProviderBadge({ mapping }: { mapping: HFModel['inferenceProviderMapping
 }
 
 // ── Lazy cells ──────────────────────────────────────────────────────────────
-
-function SpacesCell({ modelId }: { modelId: string }) {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['spaces', modelId],
-    queryFn: () => fetchSpacesCount(modelId),
-    staleTime: 10 * 60 * 1000,
-  })
-  if (isLoading) return <Spinner />
-  if (isError) return <span className="text-[var(--sea-ink-soft)] opacity-40">—</span>
-  return <span className="tabular-nums">{data === 100 ? '100+' : (data ?? 0)}</span>
-}
 
 function ModelCardExpanded({ model }: { model: HFModel }) {
   const { data: readme, isLoading, isError } = useQuery({
@@ -265,7 +253,15 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
       columnHelper.accessor('id', {
         header: 'Model ID',
         cell: ({ getValue }) => (
-          <span className="font-mono text-xs text-[var(--lagoon-deep)]">{getValue()}</span>
+          <a
+            href={`https://huggingface.co/${getValue()}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="font-mono text-xs text-[var(--lagoon-deep)] hover:underline"
+          >
+            {getValue()}
+          </a>
         ),
       }),
 
@@ -276,6 +272,36 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
             {getValue() ?? '—'}
           </span>
         ),
+      }),
+
+      columnHelper.display({
+        id: 'pin',
+        header: '',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const model = row.original
+          const isPinned = pinned.some((p) => p.id === model.id)
+          const disabled = !isPinned && pinned.length >= 3
+          return (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                isPinned ? onUnpin(model) : onPin(model)
+              }}
+              disabled={disabled}
+              title={disabled ? 'Unpin a model to add another' : undefined}
+              className={`rounded-lg border px-3 py-1 text-xs font-semibold transition-colors ${
+                isPinned
+                  ? 'border-[var(--lagoon)] bg-[var(--lagoon)]/10 text-[var(--lagoon-deep)]'
+                  : disabled
+                    ? 'cursor-not-allowed border-[var(--line)] text-[var(--sea-ink-soft)] opacity-40'
+                    : 'border-[var(--line)] text-[var(--sea-ink-soft)] hover:border-[var(--lagoon)] hover:text-[var(--lagoon-deep)]'
+              }`}
+            >
+              {isPinned ? 'Pinned' : 'Pin'}
+            </button>
+          )
+        },
       }),
 
       columnHelper.accessor('downloadsAllTime', {
@@ -368,39 +394,51 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
         ),
       }),
 
-      columnHelper.display({
-        id: 'spaces',
-        header: () => <HeaderTooltip label="Spaces" tip="Live HuggingFace apps built on this model. Capped at 100+" />,
-        enableSorting: false,
-        cell: ({ row }) => <SpacesCell modelId={row.original.id} />,
+      columnHelper.accessor('trendingScore', {
+        id: 'trending',
+        header: () => <HeaderTooltip label="Trending" tip="HuggingFace trending score — how fast this model is gaining attention right now" />,
+        cell: ({ getValue }) => {
+          const score = getValue()
+          if (score === undefined || score === null)
+            return <span className="text-[var(--sea-ink-soft)] opacity-40">—</span>
+          return (
+            <span className="tabular-nums">
+              {score > 10 ? '🔥 ' : ''}{Math.round(score).toLocaleString()}
+            </span>
+          )
+        },
       }),
 
       columnHelper.display({
-        id: 'pin',
-        header: '',
+        id: 'pricing',
+        header: () => <HeaderTooltip label="Pricing" tip="Inference availability — HF Free means HuggingFace's serverless inference is available at no cost" />,
         enableSorting: false,
         cell: ({ row }) => {
           const model = row.original
-          const isPinned = pinned.some((p) => p.id === model.id)
-          const disabled = !isPinned && pinned.length >= 3
+          const live = model.inferenceProviderMapping?.filter((e) => e.status === 'live') ?? []
+
+          if (model.inference === 'warm' || model.inference === 'cold') {
+            return (
+              <span className="inline-flex items-center rounded-full border border-[var(--palm)]/25 bg-[var(--palm)]/10 px-2 py-0.5 text-xs font-medium text-[var(--palm)]">
+                HF Free
+              </span>
+            )
+          }
+
+          if (live.length === 0) {
+            return <span className="text-xs text-[var(--sea-ink-soft)]">Self-host</span>
+          }
+
+          const hasFreeTier = live.some((e) => e.provider === 'hf-inference')
           return (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                isPinned ? onUnpin(model) : onPin(model)
-              }}
-              disabled={disabled}
-              title={disabled ? 'Unpin a model to add another' : undefined}
-              className={`rounded-lg border px-3 py-1 text-xs font-semibold transition-colors ${
-                isPinned
-                  ? 'border-[var(--lagoon)] bg-[var(--lagoon)]/10 text-[var(--lagoon-deep)]'
-                  : disabled
-                    ? 'cursor-not-allowed border-[var(--line)] text-[var(--sea-ink-soft)] opacity-40'
-                    : 'border-[var(--line)] text-[var(--sea-ink-soft)] hover:border-[var(--lagoon)] hover:text-[var(--lagoon-deep)]'
-              }`}
-            >
-              {isPinned ? 'Pinned' : 'Pin'}
-            </button>
+            <div className="flex flex-col items-start gap-0.5">
+              <span className="text-xs text-[var(--sea-ink-soft)]">Paid</span>
+              {hasFreeTier && (
+                <span className="inline-flex items-center rounded-full border border-[var(--palm)]/25 bg-[var(--palm)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--palm)]">
+                  Free tier
+                </span>
+              )}
+            </div>
           )
         },
       }),

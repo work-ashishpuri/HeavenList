@@ -21,6 +21,9 @@ export interface HFModel {
   likes: number
   lastModified: string
   tags?: string[]
+  trendingScore?: number
+  /** 'warm' | 'cold' = HF serverless inference available (free); 'frozen' | 'loading' = unavailable */
+  inference?: string
   inferenceProviderMapping?: Array<{ provider: string; providerId: string; status: string; task: string; isModelAuthor: boolean }>
   siblings?: HFModelSibling[]
   safetensors?: {
@@ -82,15 +85,8 @@ export async function fetchModelCard(modelId: string): Promise<string> {
   return res.text()
 }
 
-export async function fetchSpacesCount(modelId: string): Promise<number> {
-  const res = await fetch(`https://huggingface.co/api/models/${modelId}?expand=spaces`)
-  if (!res.ok) throw new Error(`HuggingFace API error: ${res.status}`)
-  const data = (await res.json()) as { spaces?: unknown[] }
-  return data.spaces?.length ?? 0
-}
-
 export async function fetchModels(task: PipelineTask): Promise<HFModel[]> {
-  const url = `https://huggingface.co/api/models?pipeline_tag=${task}&sort=downloads&direction=-1&limit=50&expand=pipeline_tag&expand=likes&expand=lastModified&expand=tags&expand=downloads&expand=downloadsAllTime&expand=inferenceProviderMapping&expand=safetensors&expand=siblings`
+  const url = `https://huggingface.co/api/models?pipeline_tag=${task}&sort=downloads&direction=-1&limit=50&expand=pipeline_tag&expand=likes&expand=lastModified&expand=tags&expand=downloads&expand=downloadsAllTime&expand=inferenceProviderMapping&expand=safetensors&expand=siblings&expand=trendingScore&expand=inference`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`HuggingFace API error: ${res.status}`)
   return res.json() as Promise<HFModel[]>
