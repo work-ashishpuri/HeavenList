@@ -52,7 +52,7 @@ function Home() {
         <TaskDropdown value={task} onChange={setTask} />
         <input
           type="search"
-          placeholder="Filter by model name…"
+          placeholder="Search models…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="min-w-[200px] flex-1 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--sea-ink)] outline-none placeholder:text-[var(--sea-ink-soft)] focus:border-[var(--lagoon)]"

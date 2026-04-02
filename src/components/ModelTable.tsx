@@ -218,6 +218,15 @@ function HeaderTooltip({ label, tip }: { label: string; tip: string }) {
   )
 }
 
+/** Numeric sort rank for the Pricing column: lower = cheaper/freer. */
+function pricingRank(model: HFModel): number {
+  if (model.inference === 'warm' || model.inference === 'cold') return 0 // HF Free
+  const live = model.inferenceProviderMapping?.filter((e) => e.status === 'live') ?? []
+  if (live.length === 0) return 3 // Self-host
+  if (live.some((e) => e.provider === 'hf-inference')) return 1 // Free tier
+  return 2 // Paid
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -233,7 +242,7 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
 
   const columns = useMemo(
     () => [
-      // Expand toggle
+      // ── 1. Expand toggle ───────────────────────────────────────────────────
       columnHelper.display({
         id: 'expand',
         header: '',
@@ -250,6 +259,7 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
         ),
       }),
 
+      // ── 2. Model ID ────────────────────────────────────────────────────────
       columnHelper.accessor('id', {
         header: 'Model ID',
         cell: ({ getValue }) => (
@@ -265,15 +275,7 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
         ),
       }),
 
-      columnHelper.accessor('pipeline_tag', {
-        header: 'Task',
-        cell: ({ getValue }) => (
-          <span className="inline-flex items-center rounded-full border border-[var(--chip-line)] bg-[var(--chip-bg)] px-2 py-0.5 text-xs font-medium text-[var(--sea-ink-soft)]">
-            {getValue() ?? '—'}
-          </span>
-        ),
-      }),
-
+      // ── 3. Pin ─────────────────────────────────────────────────────────────
       columnHelper.display({
         id: 'pin',
         header: '',
@@ -304,6 +306,7 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
         },
       }),
 
+      // ── 4. Downloads (all-time) ────────────────────────────────────────────
       columnHelper.accessor('downloadsAllTime', {
         id: 'downloads',
         header: () => <HeaderTooltip label="Downloads" tip="All-time total downloads" />,
@@ -312,7 +315,7 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
         ),
       }),
 
-      // Feature 1 — Download Momentum (sortable by monthly downloads)
+      // ── 5. Momentum (30-day downloads) ────────────────────────────────────
       columnHelper.accessor('downloads', {
         id: 'momentum',
         header: () => <HeaderTooltip label="Momentum" tip="Downloads in the last 30 days, and what % of lifetime downloads they represent" />,
@@ -336,6 +339,7 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
         },
       }),
 
+      // ── 6. Likes ───────────────────────────────────────────────────────────
       columnHelper.accessor('likes', {
         header: () => <HeaderTooltip label="Likes" tip="Users who liked this model on HuggingFace" />,
         cell: ({ getValue }) => (
@@ -343,57 +347,7 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
         ),
       }),
 
-      columnHelper.accessor('lastModified', {
-        header: 'Last Updated',
-        cell: ({ getValue }) => {
-          const val = getValue()
-          if (!val) return '—'
-          return new Date(val).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-          })
-        },
-      }),
-
-      columnHelper.accessor('tags', {
-        id: 'license',
-        header: 'License',
-        cell: ({ getValue }) => (
-          <span className="text-[var(--sea-ink-soft)]">{getLicense(getValue())}</span>
-        ),
-      }),
-
-      // Feature 2 — Model Size
-      columnHelper.display({
-        id: 'size',
-        header: () => <HeaderTooltip label="Size" tip="Total model weight files. Hover a cell for estimated VRAM" />,
-        enableSorting: false,
-        cell: ({ row }) => {
-          const gb = getModelSize(row.original.safetensors, row.original.siblings)
-          if (gb === null)
-            return <span className="text-[var(--sea-ink-soft)] opacity-40">—</span>
-          return (
-            <span
-              className="tabular-nums text-[var(--sea-ink-soft)]"
-              title={`~${(gb * 1.2).toFixed(1)} GB VRAM to run`}
-            >
-              {gb.toFixed(1)} GB
-            </span>
-          )
-        },
-      }),
-
-      // Feature 3 — Inference API Status
-      columnHelper.display({
-        id: 'api',
-        header: () => <HeaderTooltip label="API" tip="Hosted inference providers — click a badge to see names" />,
-        enableSorting: false,
-        cell: ({ row }) => (
-          <ProviderBadge mapping={row.original.inferenceProviderMapping} />
-        ),
-      }),
-
+      // ── 7. Trending ────────────────────────────────────────────────────────
       columnHelper.accessor('trendingScore', {
         id: 'trending',
         header: () => <HeaderTooltip label="Trending" tip="HuggingFace trending score — how fast this model is gaining attention right now" />,
@@ -409,10 +363,46 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
         },
       }),
 
+      // ── 8. Last Updated ────────────────────────────────────────────────────
+      columnHelper.accessor('lastModified', {
+        header: 'Last Updated',
+        cell: ({ getValue }) => {
+          const val = getValue()
+          if (!val) return '—'
+          return new Date(val).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+          })
+        },
+      }),
+
+      // ── 9. License ─────────────────────────────────────────────────────────
+      columnHelper.accessor('tags', {
+        id: 'license',
+        header: 'License',
+        cell: ({ getValue }) => (
+          <span className="text-[var(--sea-ink-soft)]">{getLicense(getValue())}</span>
+        ),
+      }),
+
+      // ── 10. API ────────────────────────────────────────────────────────────
+      columnHelper.display({
+        id: 'api',
+        header: () => <HeaderTooltip label="API" tip="Hosted inference providers — click a badge to see names" />,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <ProviderBadge mapping={row.original.inferenceProviderMapping} />
+        ),
+      }),
+
+      // ── 11. Pricing ────────────────────────────────────────────────────────
+      // Sort rank: HF Free (0) < Free tier (1) < Paid (2) < Self-host (3)
       columnHelper.display({
         id: 'pricing',
         header: () => <HeaderTooltip label="Pricing" tip="Inference availability — HF Free means HuggingFace's serverless inference is available at no cost" />,
-        enableSorting: false,
+        enableSorting: true,
+        sortingFn: (rowA, rowB) => pricingRank(rowA.original) - pricingRank(rowB.original),
         cell: ({ row }) => {
           const model = row.original
           const live = model.inferenceProviderMapping?.filter((e) => e.status === 'live') ?? []
@@ -439,6 +429,26 @@ export default function ModelTable({ data, pinned, onPin, onUnpin }: Props) {
                 </span>
               )}
             </div>
+          )
+        },
+      }),
+
+      // ── 12. Size (reference; last) ─────────────────────────────────────────
+      columnHelper.display({
+        id: 'size',
+        header: () => <HeaderTooltip label="Size" tip="Total model weight files. Hover a cell for estimated VRAM" />,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const gb = getModelSize(row.original.safetensors, row.original.siblings)
+          if (gb === null)
+            return <span className="text-[var(--sea-ink-soft)] opacity-40">—</span>
+          return (
+            <span
+              className="tabular-nums text-[var(--sea-ink-soft)]"
+              title={`~${(gb * 1.2).toFixed(1)} GB VRAM to run`}
+            >
+              {gb.toFixed(1)} GB
+            </span>
           )
         },
       }),
